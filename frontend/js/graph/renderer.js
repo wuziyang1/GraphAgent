@@ -11,10 +11,9 @@
  * 设计要点（面向 3000+ 节点规模）：
  *   - 单次渲染节点数受 KG.config.GRAPH_MAX_NODES 保护，超限自动截断并告警
  *   - 图谱浏览采用“概览 + 按需展开”：overview 先展示重要节点，
- *     用户交互时调用 /graph/expand 增量并入画布，而不是一次性拉全图
+ *     双击节点调用 /graph/expand，经 mergeData() 增量并入画布，不整图重排
  *
  * TODO（后续迭代，见 README 开发顺序）：
- *   - 双击节点 → 调用 /graph/expand 增量并入画布（增量 merge）
  *   - 布局切换（cose / concentric / breadthfirst）
  *   - 超大规模时的采样与聚合展示策略
  */
@@ -27,6 +26,22 @@
     if (!global.cytoscape) {
       throw new Error('Cytoscape.js 未加载：请检查 vendor/cytoscape.min.js 或 CDN 是否可用');
     }
+  }
+
+  /** 图数据 → Cytoscape 元素（setData 与 mergeData 共用的组装规则） */
+  function toNodeElement(n, position) {
+    return {
+      group: 'nodes',
+      data: { id: n.id, name: n.name, type: n.type, degree: n.degree || 0 },
+      position: position
+    };
+  }
+
+  function toEdgeElement(e) {
+    return {
+      group: 'edges',
+      data: { id: e.id, source: e.source, target: e.target, relation: e.relation, weight: e.weight }
+    };
   }
 
   function GraphRenderer(container, options) {
@@ -55,15 +70,9 @@
     }
 
     var elements = nodes.map(function (n) {
-      return {
-        group: 'nodes',
-        data: { id: n.id, name: n.name, type: n.type, degree: n.degree || 0 }
-      };
+      return toNodeElement(n);
     }).concat(edges.map(function (e) {
-      return {
-        group: 'edges',
-        data: { id: e.id, source: e.source, target: e.target, relation: e.relation, weight: e.weight }
-      };
+      return toEdgeElement(e);
     }));
 
     this.cy.elements().remove();
@@ -84,15 +93,59 @@
       name: name || 'cose',
       animate: true,
       animationDuration: 400,
-      nodeRepulsion: 12000,
-      idealEdgeLength: 90,
-      edgeElasticity: 0.45,
-      gravity: 80,
-      numIter: 1500,
+      nodeRepulsion: 20000,
+      nodeOverlap: 60,               // 专门推开重叠节点的斥力（默认 1，中心簇易挤压）
+      idealEdgeLength: 110,
+      edgeElasticity: 0.4,
+      gravity: 55,
+      numIter: 2000,
       padding: 30
     }).run();
     return this;
   };
+
+  /**
+   * 增量并入子图（双击节点“按需展开”时使用）：
+   *   - 只添加画布上不存在的节点与边，已有元素位置保持不变（不整图重排）
+   *   - 新节点围绕锚点节点圆形布点，视觉上“从该节点生长出来”
+   *   - 端点不在画布（也不在本次新增集合）中的边会被跳过
+   * 返回 { addedNodes, addedEdges }。
+   */
+  GraphRenderer.prototype.mergeData = function (payload, anchorId) {
+    payload = payload || {};
+    var known = {};
+    this.cy.nodes().forEach(function (n) { known[n.id()] = true; });
+    var knownEdges = {};
+    this.cy.edges().forEach(function (e) { knownEdges[e.id()] = true; });
+
+    var newNodes = (payload.nodes || []).filter(function (n) { return !known[n.id]; });
+    newNodes.forEach(function (n) { known[n.id] = true; }); // 新节点也参与边的端点校验
+    var newEdges = (payload.edges || []).filter(function (e) {
+      return !knownEdges[e.id] && known[e.source] && known[e.target];
+    });
+
+    if (newNodes.length || newEdges.length) {
+      var anchor = anchorId ? this.cy.getElementById(anchorId) : this.cy.collection();
+      var c = anchor.nonempty() ? anchor.position() : { x: 0, y: 0 };
+      var radius = 150 + 8 * Math.max(newNodes.length - 8, 0);
+      var elements = newNodes.map(function (n, i) {
+        var angle = (Math.PI * 2 * i) / newNodes.length - Math.PI / 2;
+        return toNodeElement(n, {
+          x: c.x + radius * Math.cos(angle),
+          y: c.y + radius * Math.sin(angle)
+        });
+      }).concat(newEdges.map(function (e) {
+        return toEdgeElement(e);
+      }));
+      this.cy.add(elements);
+    }
+    return { addedNodes: newNodes.length, addedEdges: newEdges.length };
+  };
+
+  /* ---------- 计数（状态栏展示“当前画布加载量”） ---------- */
+
+  GraphRenderer.prototype.nodeCount = function () { return this.cy.nodes().length; };
+  GraphRenderer.prototype.edgeCount = function () { return this.cy.edges().length; };
 
   /* ---------- 交互事件（页面通过这些方法订阅，不直接碰 cy） ---------- */
 
@@ -120,6 +173,43 @@
     this.cy.on('tap', function (e) {
       if (e.target === cy) handler();
     });
+    return this;
+  };
+
+  /** 双击节点（两次 tap 间隔 ≤350ms 判定，双击后需再点第三次才会重新计时） */
+  GraphRenderer.prototype.onNodeDblClick = function (handler) {
+    var last = { id: null, time: 0 };
+    this.cy.on('tap', 'node', function (e) {
+      var now = Date.now();
+      var id = e.target.id();
+      if (last.id === id && now - last.time <= 350) {
+        last.id = null;
+        handler(e.target.data());
+      } else {
+        last.id = id;
+        last.time = now;
+      }
+    });
+    return this;
+  };
+
+  /** 节点悬浮进/出：onEnter(nodeData, event) / onLeave() —— 用于悬浮信息卡 */
+  GraphRenderer.prototype.onNodeHover = function (onEnter, onLeave) {
+    this.cy.on('mouseover', 'node', function (e) { onEnter(e.target.data(), e); });
+    if (onLeave) this.cy.on('mouseout', 'node', function () { onLeave(); });
+    return this;
+  };
+
+  /** 关系悬浮进/出：onEnter(edgeData, event) / onLeave() */
+  GraphRenderer.prototype.onEdgeHover = function (onEnter, onLeave) {
+    this.cy.on('mouseover', 'edge', function (e) { onEnter(e.target.data(), e); });
+    if (onLeave) this.cy.on('mouseout', 'edge', function () { onLeave(); });
+    return this;
+  };
+
+  /** 画布被交互（点击 / 缩放 / 平移 / 拖拽 / 尺寸变化）时回调 —— 用于收起悬浮卡 */
+  GraphRenderer.prototype.onInteract = function (handler) {
+    this.cy.on('tap viewport drag', handler);
     return this;
   };
 

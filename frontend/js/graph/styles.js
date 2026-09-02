@@ -42,6 +42,10 @@
         'text-valign': 'bottom',
         'text-halign': 'center',
         'text-margin-y': 6,
+        'text-background-color': '#fbfcfe',   // 与画布同色衬底，标签压线时仍可读
+        'text-background-opacity': 1,
+        'text-background-padding': 2,
+        'text-background-shape': 'roundrectangle',
         'border-width': 2,
         'border-color': '#ffffff'
       }

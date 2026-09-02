@@ -262,6 +262,25 @@ body[data-page="home"] {
 }
 .graph-mask[hidden] { display: none; }
 
+/* 悬浮信息卡（节点/关系 hover；单个 DOM 复用，见 home.js） */
+.graph-tooltip {
+  position: absolute;
+  z-index: 30;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, .12);
+  font-size: 12px;
+  line-height: 1.6;
+  pointer-events: none;               /* 不拦截画布鼠标事件 */
+}
+.graph-tooltip[hidden] { display: none; }
+.graph-tooltip .tt-title { font-weight: 700; font-size: 13px; }
+.graph-tooltip .tt-meta { color: var(--color-text-sub); }
+.graph-tooltip .tt-hint { margin-top: 3px; font-size: 11px; color: #94a3b8; }
+
 /* ---------- 右侧：实体详情 ---------- */
 .detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .detail-name { font-size: 17px; font-weight: 700; flex: 1; min-width: 0; word-break: break-all; }
@@ -298,6 +317,26 @@ body[data-page="home"] {
 }
 .rel-item .rel-other { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rel-item .rel-other-type { flex: none; font-size: 11px; color: var(--color-text-sub); }
+
+/* 关联实体（去重后的相邻实体，可点击跳转） */
+.entity-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.entity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.entity-chip .dot { margin-right: 0; flex: none; }
 
 /* 关系详情卡片 */
 .relation-flow {

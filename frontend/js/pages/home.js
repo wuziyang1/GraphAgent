@@ -4,10 +4,10 @@
  * 页面五区（见 index.html）：
  *   顶部：标题 / 说明 / 全图统计（stats 接口）
  *   左侧：实体搜索 + 类型筛选 + 结果列表 + 类型图例（search 接口）
- *   中间：Cytoscape 图谱画布（overview 接口；拖拽 / 缩放 / 点选）
- *   右侧：实体详情 + 相关实体与关系（entities/{id} + relations 接口）；
+ *   中间：Cytoscape 图谱画布（overview 概览采样；滚轮缩放 / 拖拽 / 单击 / 双击展开 / hover 悬浮卡）
+ *   右侧：实体详情（属性 + 出边 / 入边 / 关联实体，entities/{id} + relations 接口）；
  *         单击关系边时切换为关系详情卡片
- *   底部：API 状态 / 数据来源 / 当前加载节点数与关系数
+ *   底部：API 状态 / 数据来源 / 当前画布加载节点数与关系数
  *
  * 全部走 KG.api.graph（Mock 模式下自动使用本地数据，字段与 docs/api.md 一致）。
  */
@@ -24,9 +24,11 @@
      'search-input', 'search-btn', 'type-filter', 'clear-filter-btn',
      'search-results', 'result-count', 'legend',
      'graph-container', 'graph-mask', 'graph-mask-text',
-     'zoom-in-btn', 'zoom-out-btn', 'fit-btn',
+     'zoom-in-btn', 'zoom-out-btn', 'fit-btn', 'reset-btn', 'graph-tooltip',
      'entity-detail', 'entity-name', 'entity-type-badge', 'entity-id', 'entity-desc',
-     'entity-props-body', 'entity-prop-count', 'entity-rel-list', 'entity-rel-count',
+     'entity-props-body', 'entity-prop-count',
+     'entity-out-list', 'entity-out-count', 'entity-in-list', 'entity-in-count',
+     'entity-linked-list', 'entity-linked-count',
      'relation-detail', 'rel-source', 'rel-name', 'rel-target', 'rel-id', 'rel-type', 'rel-confidence',
      'detail-empty', 'api-dot', 'api-status-text', 'source-text',
      'loaded-nodes', 'loaded-edges', 'graph-scope'
@@ -92,6 +94,7 @@
     dom['zoom-in-btn'].addEventListener('click', function () { renderer && renderer.zoomIn(); });
     dom['zoom-out-btn'].addEventListener('click', function () { renderer && renderer.zoomOut(); });
     dom['fit-btn'].addEventListener('click', function () { renderer && renderer.fit(); });
+    dom['reset-btn'].addEventListener('click', resetGraph);
 
     // 关系详情卡片里的实体名可点击跳转
     dom['rel-source'].addEventListener('click', function () { selectEntity(dom['rel-source'].dataset.id); });
@@ -104,10 +107,57 @@
       renderer.onNodeClick(function (nodeData) { selectEntity(nodeData.id); });
       renderer.onEdgeClick(function (edgeData) { showRelationDetail(edgeData); });
       renderer.onBackgroundClick(function () { renderer.clearSelection(); });
+      renderer.onNodeDblClick(function (nodeData) { expandEntity(nodeData.id); });
+      renderer.onNodeHover(showNodeTooltip, hideTooltip);
+      renderer.onEdgeHover(showEdgeTooltip, hideTooltip);
+      renderer.onInteract(hideTooltip); // 缩放/平移/拖拽/点击时收起悬浮卡，避免位置失真
     } catch (err) {
       console.error('[home] 图谱初始化失败：', err);
       dom['graph-mask-text'].textContent = '图谱初始化失败：' + err.message;
     }
+  }
+
+  /* ---------- 节点/关系悬浮信息卡（单个 DOM 复用，避免频繁创建节点） ---------- */
+
+  function hideTooltip() {
+    var tip = dom['graph-tooltip'];
+    if (tip && !tip.hidden) tip.hidden = true;
+  }
+
+  /** 悬浮卡定位在鼠标右下方，超出画布时向左/上翻转 */
+  function placeTooltip(e) {
+    var tip = dom['graph-tooltip'];
+    var wrap = dom['graph-wrap'] || dom['graph-container'].parentNode;
+    var x = e.renderedPosition.x + 16;
+    var y = e.renderedPosition.y + 18;
+    tip.hidden = false;
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    if (x + w > wrap.clientWidth - 8) x = Math.max(8, x - w - 32);
+    if (y + h > wrap.clientHeight - 8) y = Math.max(8, y - h - 36);
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  function showNodeTooltip(data, e) {
+    dom['graph-tooltip'].innerHTML =
+      '<div class="tt-title">' + KG.utils.escapeHtml(data.name) + '</div>' +
+      '<div class="tt-meta">' + KG.utils.escapeHtml(typeLabel(data.type)) +
+      ' · 关联 ' + (data.degree || 0) + ' 条关系</div>' +
+      '<div class="tt-hint">单击查看详情 · 双击展开相邻节点</div>';
+    placeTooltip(e);
+  }
+
+  function showEdgeTooltip(data, e) {
+    var s = renderer.getNodeData(data.source);
+    var t = renderer.getNodeData(data.target);
+    dom['graph-tooltip'].innerHTML =
+      '<div class="tt-title">' +
+        KG.utils.escapeHtml((s ? s.name : data.source) + ' → ' + (t ? t.name : data.target)) +
+      '</div>' +
+      '<div class="tt-meta">关系：' + KG.utils.escapeHtml(data.relation) +
+      ' · 置信度 ' + (data.weight == null ? '—' : Math.round(data.weight * 100) + '%') + '</div>' +
+      '<div class="tt-hint">单击查看关系详情</div>';
+    placeTooltip(e);
   }
 
   /* ================================================================
@@ -159,24 +209,65 @@
    * 中间：图谱加载
    * ================================================================ */
 
+  /** 概览采样：先加载高度数核心节点（几十个），其余通过双击节点按需展开 */
   async function loadOverview() {
     try {
-      var payload = await KG.api.graph.overview({ limit: 200 });
+      var payload = await KG.api.graph.overview({ limit: 40 });
       if (!renderer) return;
       renderer.setData(payload);
       renderer.applyTypeDim(dom['type-filter'].value); // 恢复可能已存在的类型筛选
 
-      dom['loaded-nodes'].textContent = KG.utils.formatNumber(payload.nodes.length);
-      dom['loaded-edges'].textContent = KG.utils.formatNumber(payload.edges.length);
-      dom['graph-scope'].textContent = payload.truncated
+      updateLoadStatus(payload.truncated
         ? '全图 ' + KG.utils.formatNumber(payload.total_nodes) + ' 实体 / ' +
-          KG.utils.formatNumber(payload.total_edges) + ' 关系（已采样展示）'
-        : '已全量展示';
+          KG.utils.formatNumber(payload.total_edges) + ' 关系（已采样展示，双击节点可展开）'
+        : '已全量展示');
       hide(dom['graph-mask']);
     } catch (err) {
       console.error('[home] 图谱加载失败：', err);
       dom['graph-mask-text'].textContent = '图谱加载失败：' + err.message;
     }
+  }
+
+  /** 底部“当前加载”计数统一从这里更新（overview / expand 后都调用） */
+  function updateLoadStatus(scopeText) {
+    dom['loaded-nodes'].textContent = KG.utils.formatNumber(renderer ? renderer.nodeCount() : 0);
+    dom['loaded-edges'].textContent = KG.utils.formatNumber(renderer ? renderer.edgeCount() : 0);
+    if (scopeText) dom['graph-scope'].textContent = scopeText;
+  }
+
+  /**
+   * 双击节点：按需展开相邻子图（/graph/expand → mergeData 增量并入画布）。
+   * 这是面向 3000+ 数据规模的加载策略：概览只给核心节点，其余走到哪展开到哪。
+   */
+  async function expandEntity(entityId) {
+    if (!renderer || !entityId) return;
+    dom['graph-scope'].textContent = '正在展开相邻节点…';
+    try {
+      var payload = await KG.api.graph.expand(entityId, { depth: 1, limit: 30 });
+      var added = renderer.mergeData(payload, entityId);
+      renderer.applyTypeDim(dom['type-filter'].value); // 新并入的元素同样遵循类型筛选
+      updateLoadStatus(added.addedNodes
+        ? '已展开 ' + added.addedNodes + ' 个相邻实体 / ' + added.addedEdges + ' 条关系'
+        : '该节点的相邻实体已全部在画布中');
+    } catch (err) {
+      console.error('[home] 展开失败：', err);
+      dom['graph-scope'].textContent = '展开失败：' + err.message;
+    }
+  }
+
+  /** 重置图谱：清空筛选/选中/详情，重新加载概览 */
+  function resetGraph() {
+    hideTooltip();
+    currentEntityId = null;
+    dom['type-filter'].value = '';
+    dom['search-input'].value = '';
+    clearResults();
+    applyTypeFilter('');
+    if (renderer) renderer.clearSelection();
+    hide(dom['entity-detail']);
+    hide(dom['relation-detail']);
+    show(dom['detail-empty']);
+    loadOverview();
   }
 
   /* ================================================================
@@ -269,7 +360,11 @@
     dom['entity-id'].textContent = entityId;
     dom['entity-desc'].textContent = '';
     dom['entity-props-body'].innerHTML = '';
-    dom['entity-rel-list'].innerHTML = '<li class="result-empty">加载中…</li>';
+    dom['entity-out-count'].textContent = '…';
+    dom['entity-in-count'].textContent = '…';
+    dom['entity-out-list'].innerHTML = dom['entity-in-list'].innerHTML = '<li class="result-empty">加载中…</li>';
+    dom['entity-linked-count'].textContent = '…';
+    dom['entity-linked-list'].innerHTML = '';
 
     try {
       var detail = await KG.api.graph.getEntity(entityId);
@@ -306,28 +401,66 @@
       : '<tr><td>（暂无属性）</td></tr>';
   }
 
-  /** 相关实体列表：每行 = 方向 + 关系类型 + 对端实体（可点击跳转） */
-  function renderEntityRelations(entityId, items) {
-    dom['entity-rel-count'].textContent = items.length;
-    if (!items.length) {
-      dom['entity-rel-list'].innerHTML = '<li class="result-empty">（暂无相关关系）</li>';
-      return;
-    }
-    dom['entity-rel-list'].innerHTML = items.map(function (r) {
-      var outgoing = r.source.id === entityId;
-      var other = outgoing ? r.target : r.source;
-      return '<li class="rel-item" data-id="' + KG.utils.escapeHtml(other.id) + '">' +
-               '<span class="rel-dir" title="' + (outgoing ? '该实体发出的关系' : '指向该实体的关系') + '">' +
-                 (outgoing ? '→' : '←') + '</span>' +
-               '<span class="rel-label">' + KG.utils.escapeHtml(r.relation) + '</span>' +
-               '<span class="rel-other" title="' + KG.utils.escapeHtml(other.name) + '">' +
-                 KG.utils.escapeHtml(other.name) + '</span>' +
-               '<span class="rel-other-type">' + KG.utils.escapeHtml(typeLabel(other.type)) + '</span>' +
-             '</li>';
-    }).join('');
+  /** 单条关系行的 HTML：isOut=true 时为“关系 → 对端”，否则“对端 → 关系”（隐含指向当前实体） */
+  function relRowHtml(r, other, isOut) {
+    var dirTitle = isOut
+      ? '出边：当前实体 → ' + other.name
+      : '入边：' + other.name + ' → 当前实体';
+    var parts = isOut
+      ? ['<span class="rel-label" title="' + KG.utils.escapeHtml(r.relation) + '">' + KG.utils.escapeHtml(r.relation) + '</span>',
+         '<span class="rel-dir" title="' + KG.utils.escapeHtml(dirTitle) + '">→</span>',
+         otherHtml(other)]
+      : [otherHtml(other),
+         '<span class="rel-dir" title="' + KG.utils.escapeHtml(dirTitle) + '">→</span>',
+         '<span class="rel-label" title="' + KG.utils.escapeHtml(r.relation) + '">' + KG.utils.escapeHtml(r.relation) + '</span>'];
+    return '<li class="rel-item" data-id="' + KG.utils.escapeHtml(other.id) + '">' + parts.join('') + '</li>';
+  }
 
-    KG.utils.$$('.rel-item', dom['entity-rel-list']).forEach(function (li) {
-      li.addEventListener('click', function () { selectEntity(li.dataset.id); });
+  function otherHtml(other) {
+    return '<span class="rel-other" title="' + KG.utils.escapeHtml(other.name) + '">' +
+             KG.utils.escapeHtml(other.name) +
+           '</span>' +
+           '<span class="rel-other-type">' + KG.utils.escapeHtml(typeLabel(other.type)) + '</span>';
+  }
+
+  /**
+   * 相关关系渲染：拆分为出边（当前实体 → 他人）与入边（他人 → 当前实体）两组，
+   * 另外汇总去重后的关联实体，全部可点击跳转。
+   */
+  function renderEntityRelations(entityId, items) {
+    var outs = [], ins = [];
+    items.forEach(function (r) { (r.source.id === entityId ? outs : ins).push(r); });
+
+    dom['entity-out-count'].textContent = outs.length;
+    dom['entity-in-count'].textContent = ins.length;
+    dom['entity-out-list'].innerHTML = outs.length
+      ? outs.map(function (r) { return relRowHtml(r, r.target, true); }).join('')
+      : '<li class="result-empty">（无出边）</li>';
+    dom['entity-in-list'].innerHTML = ins.length
+      ? ins.map(function (r) { return relRowHtml(r, r.source, false); }).join('')
+      : '<li class="result-empty">（无入边）</li>';
+
+    // 关联实体：出入两端去重
+    var seen = {}, linked = [];
+    items.forEach(function (r) {
+      var other = r.source.id === entityId ? r.target : r.source;
+      if (!seen[other.id]) { seen[other.id] = true; linked.push(other); }
+    });
+    dom['entity-linked-count'].textContent = linked.length;
+    dom['entity-linked-list'].innerHTML = linked.length
+      ? linked.map(function (o) {
+          return '<span class="entity-chip" data-id="' + KG.utils.escapeHtml(o.id) + '" ' +
+                 'title="' + KG.utils.escapeHtml(typeLabel(o.type) + ' · ' + o.id) + '">' +
+                   '<span class="dot" style="background:' + (COLORS[o.type] || '#64748b') + '"></span>' +
+                   KG.utils.escapeHtml(o.name) +
+                 '</span>';
+        }).join('')
+      : '<span class="placeholder-note">（无关联实体）</span>';
+
+    [dom['entity-out-list'], dom['entity-in-list'], dom['entity-linked-list']].forEach(function (root) {
+      KG.utils.$$('.rel-item, .entity-chip', root).forEach(function (el) {
+        el.addEventListener('click', function () { selectEntity(el.dataset.id); });
+      });
     });
   }
 
@@ -384,11 +517,15 @@
    * 控制台调试出口（答辩演示 / 自测时可在 Console 中直接调用）：
    *   KG.page.selectEntity('ent_00001')
    *   KG.page.doSearch()
+   *   KG.page.expandEntity('ent_00007')      // 双击节点的按需展开
+   *   KG.page.resetGraph()                   // 工具栏“重置”
    *   KG.page.showRelationDetail({ id:'rel_00001', source:'ent_00001', target:'ent_00009', relation:'出生于', weight:0.98 })
    */
   KG.page = {
     selectEntity: selectEntity,
     doSearch: doSearch,
+    expandEntity: expandEntity,
+    resetGraph: resetGraph,
     showRelationDetail: showRelationDetail
   };
 })(window);

@@ -58,13 +58,17 @@
         <button type="button" class="btn btn-ghost" id="zoom-in-btn" title="放大">＋</button>
         <button type="button" class="btn btn-ghost" id="zoom-out-btn" title="缩小">－</button>
         <button type="button" class="btn btn-ghost" id="fit-btn" title="适配视口">适配</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn" title="清除筛选与选中，重新加载概览">重置</button>
       </div>
 
-      <div class="graph-hint">滚轮缩放 · 空白处拖拽平移 · 节点可拖动 · 单击节点或关系查看详情</div>
+      <div class="graph-hint">滚轮缩放 · 空白处拖拽平移 · 节点可拖动 · 单击查看详情 · 双击节点展开相邻</div>
 
       <div class="graph-mask" id="graph-mask">
         <div class="graph-mask-text" id="graph-mask-text">图谱加载中…</div>
       </div>
+
+      <!-- 节点/关系悬浮信息卡（单个 DOM 复用，见 home.js） -->
+      <div class="graph-tooltip" id="graph-tooltip" hidden></div>
     </section>
 
     <!-- ---------- 右侧区域：实体详情 ---------- -->
@@ -87,8 +91,14 @@
         <div class="panel-title">属性（<span id="entity-prop-count">0</span>）</div>
         <table class="kv-table kv-compact"><tbody id="entity-props-body"></tbody></table>
 
-        <div class="panel-title">相关实体与关系（<span id="entity-rel-count">0</span>）</div>
-        <ul class="rel-list" id="entity-rel-list"></ul>
+        <div class="panel-title" title="该实体指向其他实体的关系">出边（<span id="entity-out-count">0</span>）</div>
+        <ul class="rel-list" id="entity-out-list"></ul>
+
+        <div class="panel-title" title="其他实体指向该实体的关系">入边（<span id="entity-in-count">0</span>）</div>
+        <ul class="rel-list" id="entity-in-list"></ul>
+
+        <div class="panel-title" title="与该实体直接相连的全部实体（去重）">关联实体（<span id="entity-linked-count">0</span>）</div>
+        <div class="entity-chips" id="entity-linked-list"></div>
       </div>
 
       <!-- 关系详情卡片（单击关系边时显示） -->
