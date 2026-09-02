@@ -198,6 +198,11 @@ body[data-page="home"] {
 
 .result-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .result-empty { padding: 18px 8px; text-align: center; color: var(--color-text-sub); font-size: 13px; }
+.result-empty.result-error { color: var(--color-err); line-height: 1.9; } /* 搜索失败态 */
+.result-empty.result-more { padding: 6px 8px; font-size: 12px; }          /* 结果截断提示 */
+.state-hint { font-size: 12px; color: #94a3b8; }                          /* 空结果/失败的次行建议 */
+.btn[disabled] { opacity: .6; cursor: not-allowed; }                      /* 搜索中的按钮禁用态 */
+.match-field { flex: none; font-size: 11px; color: #94a3b8; }             /* 搜索结果命中字段标注 */
 .result-item {
   padding: 8px 10px;
   border: 1px solid var(--color-border);

@@ -67,8 +67,15 @@
       }
     },
     {
+      // 选中态：描边 + 柔和光晕（搜索定位时在密集画布中也一眼可辨）
       selector: 'node:selected',
-      style: { 'border-color': '#2563eb', 'border-width': 3 }
+      style: {
+        'border-color': '#2563eb',
+        'border-width': 3,
+        'overlay-color': '#2563eb',
+        'overlay-opacity': 0.18,
+        'overlay-padding': 10
+      }
     },
     {
       selector: 'edge:selected',

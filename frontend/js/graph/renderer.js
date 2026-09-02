@@ -77,9 +77,16 @@
 
     this.cy.elements().remove();
     this.cy.add(elements);
-    this.runLayout();
+
+    // 布局真正结束（layoutstop）后再适配视口；期间用户已定位则跳过，避免顶掉定位
+    this._autoFitPending = true;
     var self = this;
-    setTimeout(function () { self.fit(); }, 450); // 等布局动画结束后适配视口
+    this.runLayout().then(function () {
+      if (self._autoFitPending) {
+        self._autoFitPending = false;
+        self.fit();
+      }
+    });
 
     if (payload && payload.truncated) {
       console.info('[GraphRenderer] 当前为采样结果：全图共 ' + payload.total_nodes + ' 节点 / ' + payload.total_edges + ' 关系');
@@ -87,9 +94,12 @@
     return this;
   };
 
-  /** 重排布局（默认 cose 力导向；参数调松一些，减少节点与标签重叠） */
+  /**
+   * 重排布局（默认 cose 力导向；参数调松一些，减少节点与标签重叠）。
+   * 返回 layoutstop 的 Promise，调用方在其 resolve 后做视口适配，避免盲等定时器与布局竞态。
+   */
   GraphRenderer.prototype.runLayout = function (name) {
-    this.cy.layout({
+    var layout = this.cy.layout({
       name: name || 'cose',
       animate: true,
       animationDuration: 400,
@@ -100,8 +110,9 @@
       gravity: 55,
       numIter: 2000,
       padding: 30
-    }).run();
-    return this;
+    });
+    layout.run();
+    return layout.promiseOn('layoutstop');
   };
 
   /**
@@ -245,6 +256,24 @@
   GraphRenderer.prototype.fit = function (padding) {
     this.cy.fit(undefined, padding == null ? 40 : padding);
     return this;
+  };
+
+  /**
+   * 定位并高亮节点：平移视口使其居中（当前缩放过小时先放大到可辨识级别）。
+   * 用于搜索结果点击后的“自动定位”；节点不在画布上返回 false，由调用方先 expand 并入。
+   * 居中目标 pan 手工计算（容器中心 − 节点模型坐标 × zoom），同步设置保证各环境行为一致。
+   */
+  GraphRenderer.prototype.focusNode = function (id) {
+    var node = this.cy.getElementById(id);
+    if (node.empty()) return false;
+    this._autoFitPending = false; // 用户定位优先，跳过初始化阶段尚未执行的自动适配
+    this.cy.elements().unselect();
+    node.select();
+    var zoom = Math.max(this.cy.zoom(), 0.8);
+    var p = node.position();
+    this.cy.zoom(zoom);
+    this.cy.pan({ x: this.cy.width() / 2 - p.x * zoom, y: this.cy.height() / 2 - p.y * zoom });
+    return true;
   };
 
   /** 取某节点的 data（不存在返回 null），供页面把 id 解析成名称 */

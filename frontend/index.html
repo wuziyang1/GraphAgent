@@ -67,7 +67,7 @@
         <div class="graph-mask-text" id="graph-mask-text">图谱加载中…</div>
       </div>
 
-      <!-- 节点/关系悬浮信息卡（单个 DOM 复用，见 home.js） -->
+      <!-- 节点/关系悬浮信息卡（单个 DOM 复用，见 js/graph/tooltip.js） -->
       <div class="graph-tooltip" id="graph-tooltip" hidden></div>
     </section>
 
@@ -146,7 +146,8 @@
   <script src="vendor/cytoscape.min.js"></script>
   <script>window.cytoscape || document.write('<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"><\/script>');</script>
 
-  <!-- 应用脚本：加载顺序即依赖顺序，请保持 -->
+  <!-- 应用脚本：加载顺序即依赖顺序，请保持。
+       分层：api/ 统一请求 → graph/ 画布 → entity/ 实体查询 → pages/app.js 入口协调 -->
   <script src="js/config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api/client.js"></script>
@@ -154,7 +155,9 @@
   <script src="js/mock/mockAdapter.js"></script>
   <script src="js/api/graphApi.js"></script>
   <script src="js/graph/styles.js"></script>
+  <script src="js/graph/tooltip.js"></script>
   <script src="js/graph/renderer.js"></script>
-  <script src="js/pages/home.js"></script>
+  <script src="js/entity/entity.js"></script>
+  <script src="js/pages/app.js"></script>
 </body>
 </html>

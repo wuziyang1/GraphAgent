@@ -33,10 +33,13 @@ frontend/
     │   ├── mockData.js          # Mock 数据 + 大规模数据生成器
     │   └── mockAdapter.js       # Mock 接口实现（模拟 REST 行为，含分页与错误路径）
     ├── graph/
-    │   ├── styles.js            # Cytoscape 视觉样式（类型配色、节点/边样式）
-    │   └── renderer.js          # Cytoscape 渲染封装（GraphRenderer）
+    │   ├── styles.js            # Cytoscape 视觉样式（类型配色、选中光晕、筛选弱化）
+    │   ├── tooltip.js           # 节点/关系悬浮信息卡（单 DOM 复用、防溢出定位）
+    │   └── renderer.js          # Cytoscape 渲染封装（GraphRenderer：布局/定位/增量并入）
+    ├── entity/
+    │   └── entity.js            # 实体查询模块（搜索四态 + 实体/关系详情面板，KG.entity）
     └── pages/
-        ├── home.js              # index.html 入口
+        ├── app.js               # index.html 入口（初始化 + 模块协调）
         ├── search.js            # search.html 入口
         └── entity.js            # entity.html 入口
 ```
@@ -111,17 +114,19 @@ HTML 中先加载本地副本，再检测是否成功、失败时用 `document.w
 
 - 所有脚本挂全局命名空间 `window.KG`（KG = Knowledge Graph）；经典 `<script>` 按依赖顺序加载，无模块构建，`file://` 直开可用
 - 页面入口统一放 `js/pages/<page>.js`，在 `DOMContentLoaded` 中初始化
+- 分层职责（避免入口脚本变成大杂烩）：`api/` 只管请求与 Mock 分流、`graph/` 只管画布渲染与交互、`entity/` 只管搜索与详情面板；`pages/app.js` 只做初始化和模块协调（模块间通过回调钩子通信），不写业务细节
 - 新增页面步骤：`pages/xxx.html` → `js/pages/xxx.js` → HTML 末尾按序引入 `config / utils / api(/mock) / 页面脚本`
 - 接口数据渲染进页面前一律用 `KG.utils.escapeHtml` 转义
 - 图谱相关代码只改 `js/graph/` 下的文件，页面不直接操作 cytoscape 实例
 
 ## 开发顺序（建议）
 
-1. ✅ 首页图谱渲染：`home.js` 调 `overview()` → `GraphRenderer.setData()`，含 loading / 错误态
+1. ✅ 首页图谱渲染：`app.js` 调 `overview()` → `GraphRenderer.setData()`，含 loading / 错误态
 2. ✅ 首页交互：点击节点 / 搜索结果 / 相关实体显示详情，点击关系边显示关系详情，类型筛选联动画布
 3. ✅ 知识图谱浏览：滚轮缩放 / 拖拽画布与节点、节点与关系 hover 悬浮卡、实体详情（属性 / 出边 / 入边 / 关联实体）、工具栏放大缩小 / 适配 / 重置、双击节点调 `expand()` 增量展开邻居（3000+ 数据时的“按需展开”）
-4. ⬜ 独立搜索页：`search()` + 结果列表 + 分页（当前首页左侧已提供轻量搜索，独立页可做高级筛选）
-5. ⬜ 独立实体详情页：`getEntity()` 属性表 + `getEntityRelations()` 关系表（方向筛选 + 分页）
-6. ⬜ 体验打磨：布局切换、低置信关系弱化、节点搜索定位动画
-7. ⬜ 与后端联调（关 Mock、同源部署或地址覆盖），按 `docs/api.md` 对齐字段
-8. ⬜ 性能验证：`MOCK_SCALE_NODES = 3000` 压测，必要时调整采样/布局策略
+4. ✅ 首页实体查询：左侧面板搜索（精确 / 模糊 / 类型筛选，请求统一走 `graphApi.js`），加载中 / 成功 / 无结果 / 失败四态齐全；点击结果自动定位高亮画布节点（不在画布时先 `expand()` 并入）并在右侧显示详情
+5. ⬜ 独立搜索页：`search()` + 结果列表 + 分页（首页左侧搜索已覆盖主流程，独立页可做高级筛选与分页）
+6. ⬜ 独立实体详情页：`getEntity()` 属性表 + `getEntityRelations()` 关系表（方向筛选 + 分页）
+7. ⬜ 体验打磨：布局切换、低置信关系弱化、搜索定位过渡动画
+8. ⬜ 与后端联调（关 Mock、同源部署或地址覆盖），按 `docs/api.md` 对齐字段
+9. ⬜ 性能验证：`MOCK_SCALE_NODES = 3000` 压测，必要时调整采样/布局策略
