@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实体详情 - 知识图谱可视化</title>
+  <link rel="stylesheet" href="../css/base.css">
+</head>
+<body data-page="entity">
+
+  <header class="topbar">
+    <div class="topbar-brand">智能体驱动的知识图谱系统</div>
+    <nav>
+      <a href="../index.html">图谱浏览</a>
+      <a href="search.html">实体查询</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <p><a href="search.html">← 返回搜索</a></p>
+    <h1 id="entity-title">实体详情</h1>
+
+    <!-- TODO：基本信息，数据来自 GET /api/v1/entities/{id} -->
+    <div class="panel-title">基本信息</div>
+    <table class="kv-table" id="entity-basic">
+      <tr><td colspan="2">等待接入：GET /api/v1/entities/{id}</td></tr>
+    </table>
+
+    <!-- TODO：属性表，数据来自 entity.properties -->
+    <div class="panel-title">属性</div>
+    <table class="kv-table" id="entity-props">
+      <tr><td colspan="2">等待接入：entity.properties</td></tr>
+    </table>
+
+    <!-- TODO：关系表，支持 direction=out/in/both 筛选 + 分页；
+         数据来自 GET /api/v1/entities/{id}/relations -->
+    <div class="panel-title">关系</div>
+    <table class="kv-table" id="entity-relations">
+      <tr><td colspan="2">等待接入：GET /api/v1/entities/{id}/relations</td></tr>
+    </table>
+  </main>
+
+  <!-- 可选：本机私有配置
+  <script src="../js/config.local.js"></script>
+  -->
+
+  <script src="../js/config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/api/client.js"></script>
+  <script src="../js/mock/mockData.js"></script>
+  <script src="../js/mock/mockAdapter.js"></script>
+  <script src="../js/api/graphApi.js"></script>
+  <script src="../js/pages/entity.js"></script>
+</body>
+</html>

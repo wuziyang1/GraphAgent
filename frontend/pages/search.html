@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实体查询 - 知识图谱可视化</title>
+  <link rel="stylesheet" href="../css/base.css">
+</head>
+<body data-page="search">
+
+  <header class="topbar">
+    <div class="topbar-brand">智能体驱动的知识图谱系统</div>
+    <nav>
+      <a href="../index.html">图谱浏览</a>
+      <a href="search.html" class="active">实体查询</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <h1>实体查询</h1>
+
+    <!-- TODO：搜索输入框 + 实体类型下拉筛选（输入防抖后调用 KG.api.graph.search） -->
+    <div class="placeholder-note">搜索栏（待实现）</div>
+
+    <!-- TODO：结果列表（实体名 / 类型 / 命中字段），点击跳转 entity.html?id=xxx -->
+    <div class="placeholder">
+      <strong>搜索结果区</strong>
+      <span>下一步：读取 ?keyword= 参数，调用 GET /api/v1/search，分页展示并跳转实体详情</span>
+    </div>
+
+    <!-- TODO：分页控件 -->
+  </main>
+
+  <!-- 可选：本机私有配置
+  <script src="../js/config.local.js"></script>
+  -->
+
+  <script src="../js/config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/api/client.js"></script>
+  <script src="../js/mock/mockData.js"></script>
+  <script src="../js/mock/mockAdapter.js"></script>
+  <script src="../js/api/graphApi.js"></script>
+  <script src="../js/pages/search.js"></script>
+</body>
+</html>

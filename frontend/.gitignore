@@ -1,0 +1,6 @@
+# 个人本地配置（含各自机器上的后端地址，严禁提交）
+js/config.local.js
+
+# 系统杂项
+.DS_Store
+Thumbs.db

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能体驱动的知识图谱自动构建系统</title>
+  <link rel="stylesheet" href="css/base.css">
+</head>
+<body data-page="home">
+
+  <!-- ===================== 顶部区域：标题 + 说明 + 统计 ===================== -->
+  <header class="app-header" id="app-header">
+    <div class="header-main">
+      <h1 class="app-title">智能体驱动的知识图谱自动构建系统</h1>
+      <p class="app-subtitle">数据采集 → 实体/属性/关系抽取 → 知识图谱构建 → 可视化浏览与查询（当前为 Mock 演示数据）</p>
+    </div>
+    <div class="header-stats" id="header-stats">
+      <div class="stat"><div class="stat-num" id="stat-entities">—</div><div class="stat-label">实体数量</div></div>
+      <div class="stat"><div class="stat-num" id="stat-relations">—</div><div class="stat-label">关系数量</div></div>
+      <div class="stat"><div class="stat-num" id="stat-types">—</div><div class="stat-label">类别数量</div></div>
+    </div>
+  </header>
+
+  <!-- ===================== 主体三栏：左搜索 / 中图谱 / 右详情 ===================== -->
+  <main class="app-main">
+
+    <!-- ---------- 左侧区域：实体查询 ---------- -->
+    <aside class="panel search-panel" id="search-panel">
+      <div class="panel-title">实体查询</div>
+
+      <div class="search-box">
+        <input type="text" id="search-input" placeholder="输入实体名称 / 属性关键词" autocomplete="off">
+        <button type="button" class="btn btn-primary" id="search-btn">搜索</button>
+      </div>
+
+      <div class="search-filter">
+        <label class="filter-label" for="type-filter">类型筛选</label>
+        <select id="type-filter">
+          <option value="">全部类型</option>
+        </select>
+        <button type="button" class="btn btn-ghost" id="clear-filter-btn">清除筛选</button>
+      </div>
+
+      <div class="panel-title">搜索结果 <span class="count-badge" id="result-count"></span></div>
+      <ul class="result-list" id="search-results">
+        <li class="result-empty" id="result-placeholder">输入关键词并点击「搜索」</li>
+      </ul>
+
+      <div class="panel-title">类型图例</div>
+      <ul class="legend" id="legend"></ul>
+    </aside>
+
+    <!-- ---------- 中间区域：图谱画布 ---------- -->
+    <section class="graph-wrap" id="graph-wrap">
+      <div id="graph-container"></div>
+
+      <div class="graph-toolbar" id="graph-toolbar">
+        <button type="button" class="btn btn-ghost" id="zoom-in-btn" title="放大">＋</button>
+        <button type="button" class="btn btn-ghost" id="zoom-out-btn" title="缩小">－</button>
+        <button type="button" class="btn btn-ghost" id="fit-btn" title="适配视口">适配</button>
+      </div>
+
+      <div class="graph-hint">滚轮缩放 · 空白处拖拽平移 · 节点可拖动 · 单击节点或关系查看详情</div>
+
+      <div class="graph-mask" id="graph-mask">
+        <div class="graph-mask-text" id="graph-mask-text">图谱加载中…</div>
+      </div>
+    </section>
+
+    <!-- ---------- 右侧区域：实体详情 ---------- -->
+    <aside class="panel detail-panel" id="detail-panel">
+
+      <!-- 实体详情卡片（单击节点 / 搜索结果时显示） -->
+      <div id="entity-detail" hidden>
+        <div class="detail-head">
+          <h2 class="detail-name" id="entity-name"></h2>
+          <span class="type-badge" id="entity-type-badge"></span>
+        </div>
+
+        <table class="kv-table kv-compact">
+          <tbody>
+            <tr><th>实体 ID</th><td id="entity-id"></td></tr>
+            <tr><th>实体描述</th><td id="entity-desc"></td></tr>
+          </tbody>
+        </table>
+
+        <div class="panel-title">属性（<span id="entity-prop-count">0</span>）</div>
+        <table class="kv-table kv-compact"><tbody id="entity-props-body"></tbody></table>
+
+        <div class="panel-title">相关实体与关系（<span id="entity-rel-count">0</span>）</div>
+        <ul class="rel-list" id="entity-rel-list"></ul>
+      </div>
+
+      <!-- 关系详情卡片（单击关系边时显示） -->
+      <div id="relation-detail" hidden>
+        <div class="panel-title">关系详情</div>
+        <div class="relation-flow">
+          <a href="javascript:void(0)" class="rel-node" id="rel-source"></a>
+          <span class="rel-predicate" id="rel-name"></span>
+          <a href="javascript:void(0)" class="rel-node" id="rel-target"></a>
+        </div>
+        <table class="kv-table kv-compact">
+          <tbody>
+            <tr><th>关系 ID</th><td id="rel-id"></td></tr>
+            <tr><th>关系类型</th><td id="rel-type"></td></tr>
+            <tr><th>置信度</th><td id="rel-confidence"></td></tr>
+          </tbody>
+        </table>
+        <p class="placeholder-note">点击上方的实体名称可跳转查看其实体详情</p>
+      </div>
+
+      <!-- 未选中任何东西时的占位提示 -->
+      <div class="detail-empty" id="detail-empty">
+        <div class="detail-empty-icon">◈</div>
+        <p>单击图中节点查看实体详情<br>单击关系边查看关系详情<br>或在左侧搜索实体</p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ===================== 底部区域：系统状态 ===================== -->
+  <footer class="statusbar" id="statusbar">
+    <span class="status-item">
+      <span class="dot" id="api-dot"></span>API 状态：<span class="status-val" id="api-status-text">检测中…</span>
+    </span>
+    <span class="status-item">数据来源：<span class="status-val" id="source-text">—</span></span>
+    <span class="status-item">当前加载节点：<span class="status-val" id="loaded-nodes">0</span></span>
+    <span class="status-item">当前加载关系：<span class="status-val" id="loaded-edges">0</span></span>
+    <span class="status-item status-right" id="graph-scope">—</span>
+  </footer>
+
+  <!-- 可选：本机私有配置。将 js/config.local.example.js 复制为 js/config.local.js 后取消注释
+  <script src="js/config.local.js"></script>
+  -->
+
+  <!-- Cytoscape.js：优先本地 vendor（答辩离线可用），失败时回退 CDN -->
+  <script src="vendor/cytoscape.min.js"></script>
+  <script>window.cytoscape || document.write('<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"><\/script>');</script>
+
+  <!-- 应用脚本：加载顺序即依赖顺序，请保持 -->
+  <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api/client.js"></script>
+  <script src="js/mock/mockData.js"></script>
+  <script src="js/mock/mockAdapter.js"></script>
+  <script src="js/api/graphApi.js"></script>
+  <script src="js/graph/styles.js"></script>
+  <script src="js/graph/renderer.js"></script>
+  <script src="js/pages/home.js"></script>
+</body>
+</html>
