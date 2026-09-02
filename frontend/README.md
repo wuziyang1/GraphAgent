@@ -28,7 +28,8 @@ frontend/
     ├── utils.js                 # 通用工具（选择器 / HTML 转义 / 防抖…）
     ├── api/
     │   ├── client.js            # fetch 封装：URL 拼接、超时、envelope 解析、统一 ApiError
-    │   └── graphApi.js          # 业务接口层：Mock / 真实请求自动分流
+    │   ├── validators.js        # 响应契约校验：坏数据友好报错 / 条目级容错，页面不崩溃
+    │   └── graphApi.js          # 业务接口层：按 API_MODE 分流 Mock / 真实请求
     ├── mock/
     │   ├── mockData.js          # Mock 数据 + 大规模数据生成器
     │   └── mockAdapter.js       # Mock 接口实现（模拟 REST 行为，含分页与错误路径）
@@ -48,7 +49,7 @@ frontend/
 
 ### 方式一：直接双击 index.html（零依赖，Mock 模式）
 
-默认 `USE_MOCK = true`，双击 `frontend/index.html` 即可使用完整界面（图谱渲染 / 搜索 / 实体详情全部基于 Mock 数据）。
+默认 `API_MODE = 'mock'`，双击 `frontend/index.html` 即可使用完整界面（图谱渲染 / 搜索 / 实体详情全部基于 Mock 数据）。
 > 注意：`file://` 协议下浏览器会拦截跨域请求，此方式**只能使用 Mock 数据**。
 
 ### 方式二：本地静态服务器（推荐）
@@ -63,24 +64,30 @@ python3 -m http.server 8080
 
 ### 方式三：接入真实后端
 
-1. 将 `js/config.js` 中 `USE_MOCK` 改为 `false`（或用下述任意覆盖方式，不改代码）
+1. 将 `js/config.js` 中 `API_MODE` 改为 `'real'`（或用下述任意覆盖方式，不改代码）
 2. 保证 API 地址可达（见“配置说明”）
 
-## 配置说明（API_BASE_URL）
+## 配置说明（API_MODE 与 API_BASE_URL）
 
 **全项目只有 `js/config.js` 允许出现后端地址；禁止在任何页面/脚本里硬编码 `http://localhost:xxxx`。**
 
-默认 `API_BASE_URL = ''`（空字符串）＝ **同源相对路径**：前端与后端部署在同一域名/端口
+- `API_MODE = 'mock'`（**默认**）：使用内置 Mock 数据，后端未就绪时前端独立可跑
+- `API_MODE = 'real'`：请求真实后端。真实请求代码已提前写好（`js/api/client.js` + `graphApi.js`），
+  后端不存在时会得到「网络错误或服务器不可达」的友好提示，不会崩溃
+
+`API_BASE_URL = ''`（空字符串）＝ **同源相对路径**：前端与后端部署在同一域名/端口
 （或同一反向代理之后）时，无需任何配置即可工作。
 
 覆盖优先级（高 → 低）：
 
 | 优先级 | 方式 | 适用场景 |
 | --- | --- | --- |
-| 1 | URL 参数 `?api=<地址>`、`?mock=0` | 临时演示：`index.html?api=http://192.168.1.20:8000&mock=0`，不改代码，刷新即失效；`?api=same` 强制回到同源 |
-| 2 | `localStorage`：`KG_API_BASE_URL`、`KG_USE_MOCK` | 联调：控制台执行 `localStorage.setItem('KG_API_BASE_URL', 'http://127.0.0.1:8000')` 后刷新，对本机浏览器长期生效 |
+| 1 | URL 参数 `?mode=real&api=<地址>`（兼容旧 `?mock=0`） | 临时演示：`index.html?mode=real&api=http://192.168.1.20:8000`，不改代码，刷新即失效；`?api=same` 强制回到同源 |
+| 2 | `localStorage`：`KG_API_MODE`、`KG_API_BASE_URL`（兼容旧 `KG_USE_MOCK`） | 联调：控制台执行 `localStorage.setItem('KG_API_MODE', 'real')` 与 `localStorage.setItem('KG_API_BASE_URL', 'http://192.168.1.20:8000')` 后刷新，对本机浏览器长期生效 |
 | 3 | `js/config.local.js` | 长期固定使用某台后端：复制 `js/config.local.example.js`，并在 HTML 中取消对应 `<script>` 注释；该文件已被 gitignore，不会把个人地址提交进仓库 |
-| 4 | `js/config.js` 默认值 | `API_BASE_URL: ''`、`USE_MOCK: true` |
+| 4 | `js/config.js` 默认值 | `API_MODE: 'mock'`、`API_BASE_URL: ''` |
+
+非法值一律安全回退到 Mock（后端没接好时页面不会白屏）。
 
 首页底部状态栏会实时显示当前生效的数据来源、API 健康状态与加载规模，便于演示时说明。
 
@@ -103,12 +110,25 @@ HTML 中先加载本地副本，再检测是否成功、失败时用 `document.w
 
 升级 Cytoscape 版本时：替换 `vendor/cytoscape.min.js` 并同步修改 HTML 里的回退地址。
 
-## 与后端联调
+## 与后端联调流程
 
-1. 以仓库根目录 `docs/api.md` 为**唯一契约**；需要变更时先改文档、双方确认后再改代码
-2. 后端需处理跨域：开发环境建议 `Access-Control-Allow-Origin: *` 并正确响应 OPTIONS 预检
-3. 推荐同源部署：由后端（或 Nginx）静态托管 `frontend/` 目录，前端使用相对路径，无需 CORS、无需任何配置
-4. 后端就绪后关闭 Mock（`?mock=0` 或改配置），其余前端代码零改动
+1. **后端实现**：按仓库根目录 [`docs/api.md`](../docs/api.md) 实现接口（唯一契约，改动先改文档、双方确认）。
+   第 5 节有按优先级的实现清单（P0：health / stats / overview / search；P1：实体详情 / 关系 / expand）
+   与逐接口 curl 自测示例，后端同学可独立自查
+2. **后端跨域**：开发环境建议 `Access-Control-Allow-Origin: *` 并正确响应 OPTIONS 预检
+   （前端独立端口联调时需要；同源部署则不需要）
+3. **前端切换验证**：地址栏打开
+   `index.html?mode=real&api=http://<后端地址>:<端口>`，
+   底部状态栏「API 状态」变绿即连通，此时整页已是真实数据——不改任何代码
+4. **长期固化**（三选一）：
+   - 控制台 `localStorage.setItem('KG_API_MODE', 'real')` + `localStorage.setItem('KG_API_BASE_URL', 'http://<后端地址>')`
+   - 复制 `js/config.local.example.js` 为 `js/config.local.js` 并在 HTML 取消对应注释（gitignore，不入库）
+   - 直接改 `js/config.js` 的 `API_MODE`
+5. **最终演示**：推荐同源部署——由后端（或 Nginx）静态托管 `frontend/` 目录，前端走相对路径，
+   无需 CORS、无需任何配置
+6. **数据对不齐时**：界面会显示「后端数据不符合接口契约：…」的友好提示（不会崩溃），
+   浏览器控制台的 `[validators]` warn 会写明被丢弃的条目与原因，对照 `docs/api.md` 第 2 节修字段即可；
+   后端不可达 / 超时则显示「网络错误或服务器不可达」提示
 
 ## 编码约定
 
@@ -116,6 +136,7 @@ HTML 中先加载本地副本，再检测是否成功、失败时用 `document.w
 - 页面入口统一放 `js/pages/<page>.js`，在 `DOMContentLoaded` 中初始化
 - 分层职责（避免入口脚本变成大杂烩）：`api/` 只管请求与 Mock 分流、`graph/` 只管画布渲染与交互、`entity/` 只管搜索与详情面板；`pages/app.js` 只做初始化和模块协调（模块间通过回调钩子通信），不写业务细节
 - 新增页面步骤：`pages/xxx.html` → `js/pages/xxx.js` → HTML 末尾按序引入 `config / utils / api(/mock) / 页面脚本`
+- 接口响应在 API 层统一过 `KG.api.validators` 契约校验（`js/api/validators.js`）后才能进页面，页面不直接消费未校验的数据
 - 接口数据渲染进页面前一律用 `KG.utils.escapeHtml` 转义
 - 图谱相关代码只改 `js/graph/` 下的文件，页面不直接操作 cytoscape 实例
 
@@ -128,5 +149,5 @@ HTML 中先加载本地副本，再检测是否成功、失败时用 `document.w
 5. ⬜ 独立搜索页：`search()` + 结果列表 + 分页（首页左侧搜索已覆盖主流程，独立页可做高级筛选与分页）
 6. ⬜ 独立实体详情页：`getEntity()` 属性表 + `getEntityRelations()` 关系表（方向筛选 + 分页）
 7. ⬜ 体验打磨：布局切换、低置信关系弱化、搜索定位过渡动画
-8. ⬜ 与后端联调（关 Mock、同源部署或地址覆盖），按 `docs/api.md` 对齐字段
+8. ⬜ 与后端联调（切换机制与契约校验已就绪：`?mode=real&api=…` 免改码切换、响应格式不符时友好报错；待后端按 `docs/api.md` 实现后对齐字段）
 9. ⬜ 性能验证：`MOCK_SCALE_NODES = 3000` 压测，必要时调整采样/布局策略

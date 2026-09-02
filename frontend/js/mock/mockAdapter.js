@@ -1,7 +1,7 @@
 /**
  * mockAdapter.js —— Mock 适配器：在本地模拟 docs/api.md 中的全部接口
  *
- * graphApi.js 在 USE_MOCK=true 时把请求转发到这里。
+ * graphApi.js 在 API_MODE='mock'（默认）时把请求转发到这里。
  * 这里返回的 Promise 与真实后端行为一致：成功 resolve envelope.data，失败 reject ApiError。
  * 自带 ~150ms 延迟，让加载态表现与真实网络接近。
  */

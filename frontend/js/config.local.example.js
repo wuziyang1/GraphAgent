@@ -9,10 +9,12 @@
  *
  * 适合长期固定使用某台后端（例如后端同学局域网机器）的场景。
  * 只是临时试一下的话，更推荐不改文件：
- *   地址栏加 ?api=http://192.168.1.20:8000&mock=0
- *   或控制台 localStorage.setItem('KG_API_BASE_URL', 'http://192.168.1.20:8000')
+ *   地址栏加 ?mode=real&api=http://192.168.1.20:8000
+ *   或控制台 localStorage.setItem('KG_API_MODE', 'real') /
+ *              localStorage.setItem('KG_API_BASE_URL', 'http://192.168.1.20:8000')
  */
 window.KG_LOCAL_CONFIG = {
   API_BASE_URL: '',        // 例：'http://192.168.1.20:8000'；'' 表示同源
-  USE_MOCK: true           // 接入真实后端时改为 false
+  API_MODE: 'mock'         // 'mock' = 本地 Mock（默认）；'real' = 真实后端（接入时改这里）
+  // USE_MOCK: false       // 旧布尔写法仍兼容（true→mock / false→real），推荐用 API_MODE
 };

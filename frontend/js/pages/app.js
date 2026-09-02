@@ -219,13 +219,13 @@
    * ================================================================ */
 
   async function checkApi() {
-    dom['source-text'].textContent = KG.config.USE_MOCK
-      ? 'Mock 数据（后端未接入）'
-      : '真实后端（' + (KG.config.API_BASE_URL || '同源') + '）';
+    dom['source-text'].textContent = KG.config.API_MODE === 'real'
+      ? '真实后端（' + (KG.config.API_BASE_URL || '同源') + '）'
+      : 'Mock 数据（API_MODE=mock，后端未接入）';
     try {
       await KG.api.graph.health();
       dom['api-dot'].className = 'dot ok';
-      dom['api-status-text'].textContent = '正常（/api/v1/health）';
+      dom['api-status-text'].textContent = '正常（' + KG.config.API_PREFIX + '/health）';
     } catch (err) {
       dom['api-dot'].className = 'dot err';
       dom['api-status-text'].textContent = err.message;

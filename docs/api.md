@@ -15,6 +15,7 @@
 | 项目 | 约定 |
 | --- | --- |
 | 传输格式 | 请求与响应均为 `application/json; charset=utf-8` |
+| 请求方法 | v1 全部接口均为 **GET**，**无 Request Body**；查询条件一律通过 Query / Path 参数传递（写入类接口留给 v2） |
 | 字符编码 | UTF-8 |
 | 时间格式 | ISO 8601，如 `2026-09-02T10:00:00Z` |
 | 跨域（CORS） | 开发阶段前端可能运行在独立端口或 `file://`，后端须允许跨域（开发环境建议 `Access-Control-Allow-Origin: *`）并正确响应 OPTIONS 预检 |
@@ -224,6 +225,12 @@ HTTP 状态码与 `code` 前三位语义保持一致（如 `40401` → HTTP 404�
 { "status": "ok", "time": "2026-09-02T02:00:00Z", "version": "v1" }
 ```
 
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `status` | string | 健康时固定 `ok`（不健康走 envelope 错误分支，不返回本结构） |
+| `time` | string | 服务器当前时间，ISO 8601 |
+| `version` | string | 接口/服务版本标识，自由填写 |
+
 ### 3.2 GET /graph/stats
 
 无参数。`data`：
@@ -238,12 +245,12 @@ HTTP 状态码与 `code` 前三位语义保持一致（如 `40401` → HTTP 404�
 }
 ```
 
-| 字段 | 说明 |
-| --- | --- |
-| `entity_count` / `relation_count` | 全图实体数 / 关系数 |
-| `entity_type_distribution` | 实体类型 → 数量（前端据此生成图例） |
-| `relation_type_distribution` | 关系名称 → 数量 |
-| `last_updated` | 知识库最近一次更新时间 |
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `entity_count` / `relation_count` | int | 全图实体数 / 关系数 |
+| `entity_type_distribution` | object\<string, int\> | 实体类型 → 数量（前端据此生成类型筛选下拉与图例） |
+| `relation_type_distribution` | object\<string, int\> | 关系名称 → 数量 |
+| `last_updated` | string (ISO 8601) | 知识库最近一次更新时间 |
 
 ### 3.3 GET /graph/overview
 
@@ -292,7 +299,7 @@ HTTP 状态码与 `code` 前三位语义保持一致（如 `40401` → HTTP 404�
 
 | 参数 | 类型 | 默认 | 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `direction` | string | `both` | `out` / `in` / `both` | `out` = 该实体发出的关系；`in` = 指向该实体的关系 |
+| `direction` | string | `both` | `out` / `in` / `both`，非法值返回 40001 | `out` = 该实体发出的关系；`in` = 指向该实体的关系 |
 | `page` / `page_size` | int | 见 1.3 | 分页 | — |
 
 `data`：
@@ -341,6 +348,22 @@ HTTP 状态码与 `code` 前三位语义保持一致（如 `40401` → HTTP 404�
 | `items[].matched_field` | 命中字段：`name` / `description` / `properties` |
 | `items[].score` | 0~1 相关度，结果按 `score` 降序返回 |
 
+### 3.8 各接口错误响应速查
+
+所有错误都走 1.1 的 envelope、错误码见 1.2；下表列出**后端必须实现**的各接口主要错误分支：
+
+| 接口 | 必须返回的错误（code / 触发条件） |
+| --- | --- |
+| GET `/health` | 50000（服务内部错误） |
+| GET `/graph/stats` | 50000 |
+| GET `/graph/overview` | 40002（`limit` 超出 1~500）/ 50000 |
+| GET `/graph/expand` | 40001（`entity_id` 缺失）/ 40002（`depth`、`limit` 越界）/ 40401（`entity_id` 不存在）/ 50000 |
+| GET `/entities/{entityId}` | 40401（实体不存在）/ 50000 |
+| GET `/entities/{entityId}/relations` | 40001（`direction` 非法）/ 40401（实体不存在）/ 50000 |
+| GET `/search` | 40001（`keyword` 缺失或为空串）/ 40002（`page_size` 越界）/ 50000 |
+
+通用兜底：未匹配的路径返回 40400；未捕获异常返回 50000。任何情况下都**必须返回 JSON envelope**，不能只回 HTML 错误页或空 body。
+
 ---
 
 ## 4. 规模与性能约定（面向 3000+ 数据）
@@ -354,8 +377,56 @@ HTTP 状态码与 `code` 前三位语义保持一致（如 `40401` → HTTP 404�
 
 ---
 
-## 5. 变更记录
+## 5. 后端实现清单与自测
+
+### 5.1 必须实现的接口（按联调优先级）
+
+| 优先级 | 接口 | 前端用到的地方 | 说明 |
+| --- | --- | --- | --- |
+| P0 | GET `/health` | 底部状态栏「API 状态」 | 最简单，先打通连通性与 CORS |
+| P0 | GET `/graph/stats` | 顶部三个统计数字、类型筛选下拉、图例 | |
+| P0 | GET `/graph/overview` | 首页首屏画布 | 按 `degree` 降序采样，禁止全量返回 |
+| P0 | GET `/search` | 左侧实体查询 | 演示核心路径 |
+| P1 | GET `/entities/{entityId}` | 右侧实体详情卡 | |
+| P1 | GET `/entities/{entityId}/relations` | 详情卡的出边 / 入边 / 关联实体 | |
+| P1 | GET `/graph/expand` | 双击节点展开、搜索定位画布外实体 | 大规模「按需展开」的核心 |
+
+7 个接口全部实现后，前端把 `API_MODE` 切到 `real` 即可完整运行（切换方式见 `frontend/README.md`）。
+只完成 P0 时页面可用，但详情与展开功能会显示错误提示（不会崩溃）。
+
+### 5.2 curl 自测示例（后端同学自查返回是否符合契约）
+
+```bash
+# 假设后端跑在本机 8000 端口；把地址换成实际部署地址即可
+curl -s http://127.0.0.1:8000/api/v1/health
+curl -s http://127.0.0.1:8000/api/v1/graph/stats
+curl -s "http://127.0.0.1:8000/api/v1/graph/overview?limit=50"
+curl -s "http://127.0.0.1:8000/api/v1/graph/expand?entity_id=ent_00001&depth=1&limit=50"
+curl -s http://127.0.0.1:8000/api/v1/entities/ent_00001
+curl -s "http://127.0.0.1:8000/api/v1/entities/ent_00001/relations?direction=both&page=1&page_size=20"
+curl -s "http://127.0.0.1:8000/api/v1/search?keyword=%E5%9B%BE%E7%81%B5&page=1&page_size=20"
+
+# 错误路径也应返回 envelope（而不是堆栈或空 body）：
+curl -s "http://127.0.0.1:8000/api/v1/search?keyword="                       # 期望 code 40001
+curl -s "http://127.0.0.1:8000/api/v1/entities/ent_99999"                    # 期望 code 40401
+curl -s "http://127.0.0.1:8000/api/v1/graph/overview?limit=9999"             # 期望 code 40002
+```
+
+### 5.3 前端契约校验说明
+
+前端在 API 层对每个响应做契约校验（`frontend/js/api/validators.js`）：
+
+- 顶层结构不符（如 `items` / `nodes` 不是数组、实体缺 `id`/`name`）→ 界面显示「后端数据不符合接口契约：…」的友好提示；
+- 个别条目字段缺失 → 仅丢弃该条并在浏览器控制台 `[validators]` warn，不整页失败；
+- 可选数值缺失 → 按契约补默认值（`degree=0`、`weight=0.5`、`truncated=false` 等）。
+
+联调时看到这类提示，请对照本文档第 2 节检查字段名与类型；控制台 warn 会写明被丢弃的具体条目与原因。
+
+---
+
+## 6. 变更记录
 
 | 日期 | 版本 | 说明 |
 | --- | --- | --- |
 | 2026-09-02 | v1 | 初稿：7 个接口、统一 envelope 与错误码、8 个通用数据结构定稿（前端：wuziyang） |
+| 2026-09-02 | v1 增补 | 明确全部 GET 无 Request Body；补 health / stats 字段类型；新增 3.8 错误响应速查、第 5 节后端实现清单与 curl 自测示例、前端契约校验说明（数据结构不变，前端：wuziyang） |
