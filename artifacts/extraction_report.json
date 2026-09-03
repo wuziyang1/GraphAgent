@@ -1,0 +1,34 @@
+{
+  "entities": 752,
+  "entity_types": {
+    "Category": 15,
+    "Check": 124,
+    "Department": 14,
+    "Disease": 177,
+    "Drug": 59,
+    "Food": 7,
+    "Symptom": 316,
+    "Treatment": 40
+  },
+  "methods": {
+    "rule": 1000,
+    "source-structure": 1998
+  },
+  "properties": 1000,
+  "records_processed": 3000,
+  "records_total": 3000,
+  "rejected": 2,
+  "relation_types": {
+    "BELONGS_TO_CATEGORY": 283,
+    "HAS_COMPLICATION": 168,
+    "HAS_MARKETED_DRUG": 2,
+    "HAS_SYMPTOM": 755,
+    "NEEDS_CHECK": 316,
+    "RECOMMENDS_DRUG": 38,
+    "RECOMMENDS_FOOD": 7,
+    "TREATED_BY": 201,
+    "USES_DRUG": 47,
+    "VISITS_DEPARTMENT": 180
+  },
+  "relations": 1997
+}
